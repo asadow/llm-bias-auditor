@@ -2,7 +2,7 @@
 
 import asyncio
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 import os
 
@@ -40,7 +40,7 @@ class LLMAuditor:
         Initialize the auditor with specified backend.
         
         Args:
-            backend: 'ollama', 'openai', or 'mock'
+            backend: 'ollama' (default) or 'openai'
             model: Model name (defaults from env or backend default)
             api_key: API key for OpenAI backend (or None to use env var)
             base_url: Base URL for API
@@ -65,9 +65,9 @@ class LLMAuditor:
             
         elif self.backend == "mock":
             # Mock backend for testing - no dependencies required
-            self.base_url = None
             self.model = model or "mock-model"
             self.client = None
+            self.base_url = None
             
         else:
             raise ValueError(f"Unknown backend: {backend}. Use 'ollama', 'openai', or 'mock'")
@@ -94,7 +94,7 @@ class LLMAuditor:
             Complete audit report as dict
         """
         audit_id = str(uuid.uuid4())
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         
         # Use provided model or fall back to instance default
         model_to_use = model or self.model
@@ -195,8 +195,26 @@ class LLMAuditor:
                 return response.choices[0].message.content
             
             elif self.backend == "mock":
-                # Deterministic mock responses for testing
-                return self._generate_mock_response(user_prompt)
+                # Mock backend returns deterministic responses for testing
+                # Extract name from prompt for personalized response
+                import re
+                # Try multiple patterns to extract the name
+                patterns = [
+                    r"Name:\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",  # "Name: FirstName LastName"
+                    r"for\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+),\s+who",  # "for FirstName LastName, who"
+                    r"^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\s+is\s+applying",  # "FirstName LastName is applying"
+                ]
+                name = None
+                for pattern in patterns:
+                    match = re.search(pattern, user_prompt)
+                    if match:
+                        name = match.group(1)
+                        break
+                
+                if not name:
+                    name = "the applicant"
+                
+                return f"Based on the evaluation, {name} demonstrates strong qualifications and would be a suitable candidate for this position."
             
         except Exception as e:
             return f"[ERROR: {str(e)}]"
@@ -239,79 +257,3 @@ class LLMAuditor:
             "model": self.model,
             "base_url": self.base_url if hasattr(self, 'base_url') else None
         }
-    
-    def _generate_mock_response(self, user_prompt: str) -> str:
-        """
-        Generate deterministic mock response based on prompt content.
-        Provides realistic-looking responses for testing without real LLM.
-        
-        Args:
-            user_prompt: The user prompt text
-        
-        Returns:
-            Mock response text
-        """
-        # Extract name from prompt for personalized response
-        name = "the candidate"
-        if "Name:" in user_prompt:
-            # Hiring scenario format
-            lines = user_prompt.split('\n')
-            for line in lines:
-                if line.startswith("Name:"):
-                    name = line.replace("Name:", "").strip()
-                    break
-        else:
-            # Recommendation or credit scenario - look for pattern: "for {Name},"
-            import re
-            # Try to find pattern like "for Name," or "Name is applying" or "Name, who"
-            patterns = [
-                r'for ([A-Z][a-z]+ [A-Z][a-z]+),',  # "for FirstName LastName,"
-                r'([A-Z][a-z]+ [A-Z][a-z]+),? who',   # "FirstName LastName, who"
-                r'([A-Z][a-z]+ [A-Z][a-z]+) is applying',  # "FirstName LastName is applying"
-            ]
-            for pattern in patterns:
-                match = re.search(pattern, user_prompt)
-                if match:
-                    name = match.group(1)
-                    break
-        
-        # Generate response based on scenario type (detected from keywords)
-        if "senior software engineering position" in user_prompt.lower():
-            # Hiring scenario
-            return (
-                f"{name} presents a strong profile for the senior software engineering role. "
-                f"With 8 years of development experience and 3 years specializing in ML/AI, they demonstrate "
-                f"solid technical depth. Their educational background with both BS and MS degrees shows "
-                f"commitment to the field. The combination of Python, PyTorch, distributed systems, and cloud "
-                f"architecture skills aligns well with modern engineering requirements. I would recommend "
-                f"moving forward with an interview to assess cultural fit and technical depth in key areas."
-            )
-        elif "letter of recommendation" in user_prompt.lower() or "phd program" in user_prompt.lower():
-            # Recommendation scenario
-            return (
-                f"I am pleased to recommend {name} for admission to your PhD program in Computer Science. "
-                f"Throughout my interactions with them, they have demonstrated exceptional research capabilities, "
-                f"particularly in Natural Language Processing. Their academic record speaks to their dedication, "
-                f"and their two conference publications show they can contribute meaningfully to the field. "
-                f"{name} exhibits the curiosity, rigor, and perseverance essential for doctoral study. "
-                f"I believe they will be a valuable addition to your program and make significant contributions "
-                f"to advancing the state of research in NLP and related areas."
-            )
-        elif "loan" in user_prompt.lower() or "credit" in user_prompt.lower():
-            # Credit scenario
-            return (
-                f"Based on the application materials, {name} presents a moderate-to-strong loan candidate. "
-                f"The credit score of 720 is above average and indicates responsible credit management. "
-                f"With annual income of $85,000 and existing debt of only $15,000, the debt-to-income ratio "
-                f"is favorable. The business has been operational for 3 years with $200,000 in annual revenue, "
-                f"demonstrating stability. The requested $50,000 loan amount appears reasonable given the "
-                f"business revenue. I recommend approval with standard terms, subject to verification of "
-                f"business financials and standard documentation review."
-            )
-        else:
-            # Generic fallback
-            return (
-                f"Based on the information provided about {name}, they appear to meet the key criteria. "
-                f"Their qualifications and experience suggest they are a suitable candidate. "
-                f"Further evaluation would be appropriate to make a final determination."
-            )
