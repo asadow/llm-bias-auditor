@@ -1,6 +1,8 @@
-# LLM Bias Auditing Service
+# llm-bias-auditor
 
-A FastAPI-based service for auditing large language models against potential demographic bias through controlled prompt variation and disparity metrics.
+![CI](https://github.com/asadow/llm-bias-auditor/actions/workflows/ci.yml/badge.svg)
+
+Bias auditing service for large language models using controlled prompt variation and disparity metrics.
 
 ## Why This Exists
 
@@ -18,13 +20,24 @@ pip install -r requirements.txt
 LLM_BACKEND=mock uvicorn app.main:app --reload
 
 # Try the API
+curl http://localhost:8000/health
+# {"status":"healthy"}
+
 curl http://localhost:8000/backend
+# {"backend":"mock","model":"mock-model","base_url":null}
+
 curl -X POST "http://localhost:8000/audit" \
   -H "Content-Type: application/json" \
   -d '{"scenario": "hiring"}'
+# Returns full audit report with metrics (see below)
 ```
 
 **Why mock mode exists:** It enables instant experimentation, CI/CD testing, and demonstrations without external dependencies. The mock backend generates deterministic, realistic responses for all scenarios, allowing you to understand the audit workflow and API structure before connecting to a real LLM.
+
+**All tests run with no LLM required:**
+```bash
+pytest  # Uses mock backend automatically
+```
 
 ### Example Response
 
